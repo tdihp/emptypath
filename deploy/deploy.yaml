@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: emptypath
+  namespace: kube-system
+  labels:
+    k8s-app: emptypath
+spec:
+  selector:
+    matchLabels:
+      k8s-app: emptypath
+  template:
+    metadata:
+      labels:
+        k8s-app: emptypath
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+      - name: emptypath
+        image: "docker.io/tdihp/emptypath:202206281019"
+        imagePullPolicy: Always
+        env:
+        - name: GRPC_VERBOSITY
+          value: debug
+        - name: EMPTYPATH_NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: socket-dir
+          mountPath: /csi
+        - name: mountpoint-dir
+          mountPath: /var/lib/kubelet/pods
+          mountPropagation: Bidirectional
+      - name: liveness-probe
+        imagePullPolicy: Always
+        volumeMounts:
+        - name: socket-dir
+          mountPath: /csi
+        image: k8s.gcr.io/sig-storage/livenessprobe:v2.7.0
+        args:
+        - --v=4
+        - --csi-address=/csi/csi.sock
+      - name: csi-driver-registrar
+        image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
+        args:
+        - "--v=5"
+        - "--csi-address=/csi/csi.sock"
+        - "--kubelet-registration-path=/var/lib/kubelet/plugins/emptypath.tdihp.github.io/csi.sock"
+        livenessProbe:
+          exec:
+            command:
+            - /csi-node-driver-registrar
+            - --kubelet-registration-path=/var/lib/kubelet/plugins/emptypath.tdihp.github.io/csi.sock
+            - --mode=kubelet-registration-probe
+          initialDelaySeconds: 30
+          timeoutSeconds: 15
+        volumeMounts:
+        - name: socket-dir
+          mountPath: /csi
+        - name: registration-dir
+          mountPath: /registration
+      volumes:
+      - name: data
+        hostPath:
+          path: /tmp
+      - name: csi
+        emptyDir: {}
+      - name: registration-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins_registry
+          type: Directory
+      - name: socket-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins/emptypath.tdihp.github.io
+          type: DirectoryOrCreate
+      - name: mountpoint-dir
+        hostPath:
+          path: /var/lib/kubelet/pods
+          type: DirectoryOrCreate
+      - name: plugins-dir
+        hostPath:
+          path: /var/lib/kubelet/plugins
+          type: Directory
+---
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: emptypath.tdihp.github.io
+spec:
+  # Supports ephemeral inline volumes only.
+  volumeLifecycleModes:
+  - Ephemeral
+  # To determine at runtime which mode a volume uses, pod info and its
+  # "csi.storage.k8s.io/ephemeral" entry are needed.
+  podInfoOnMount: true
