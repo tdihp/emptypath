@@ -48,7 +48,7 @@ def testpublish(channel, tmp_path_factory, datadir):
     volume_id = "dummy-volume-id-" + str(uuid.uuid4())
     # we need to use mock as the mount needs root,
     # and we don't want that in test
-    with patch('subprocess.run'):
+    with patch('subprocess.run') as run:
         stub.NodePublishVolume(csi_pb2.NodePublishVolumeRequest(
                 volume_id=volume_id,
                 target_path=str(target_path),
@@ -58,7 +58,8 @@ def testpublish(channel, tmp_path_factory, datadir):
             ),
             timeout=1
         )
-        call_args, call_kwargs = subprocess.run.call_args
+        assert run.called == 1
+        call_args, call_kwargs = run.call_args
         assert call_args[0] == \
             ['mount', '--bind',  datadir / volume_id, target_path]
     assert target_path.exists()
@@ -77,15 +78,16 @@ def testunpublish(channel, tmp_path_factory, datadir):
 
     stub = csi_pb2_grpc.NodeStub(channel, )
 
-    with patch('pathlib.Path.is_mount') as is_mount:
-        is_mount.return_value = True
+    with patch('subprocess.run') as run:
         stub.NodeUnpublishVolume(csi_pb2.NodeUnpublishVolumeRequest(
                 volume_id=volume_id,
                 target_path=str(target_path),
             ),
             timeout=1
         )
-        assert is_mount.called
+        assert run.called == 1
+        call_args, call_kwargs = run.call_args
+        assert call_args[0] == ['umount', target_path]
 
     assert not volume_path.exists()
     assert not target_path.exists()

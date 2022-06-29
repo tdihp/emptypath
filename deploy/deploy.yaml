@@ -18,7 +18,7 @@ spec:
         kubernetes.io/os: linux
       containers:
       - name: emptypath
-        image: "docker.io/tdihp/emptypath:202206281019"
+        image: "docker.io/tdihp/emptypath:202206291057"
         imagePullPolicy: Always
         env:
         - name: GRPC_VERBOSITY

@@ -97,11 +97,18 @@ class Node(csi_pb2_grpc.NodeServicer, csi_pb2_grpc.IdentityServicer):
             volume_id, target_path)
 
         if target_path.exists():
-            if target_path.is_mount():
-                logger.info('unmounting target path %s', target_path)
-                subprocess.run(['umount', target_path])
-            else:
-                logger.warning('target path %s is not mount', target_path)
+            logger.info('unmounting target path %s', target_path)
+            try:
+                subprocess.run(['umount', target_path],
+                               check=True,
+                               capture_output=True)
+            except subprocess.CalledProcessError as e:
+                if 'not mounted' in e.stderr:
+                    logger.warning('target path %s is not mounted: %s', target_path, e)
+                elif 'not found' in e.stderr:
+                    logger.warning('target path %s is not found: %s', target_path, e)
+                else:
+                    raise
 
             logger.debug('removing target path %s', target_path)
             target_path.rmdir()
